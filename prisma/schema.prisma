@@ -339,3 +339,19 @@ model BusinessAccount {
   plan        String   @default("free")
   createdAt   DateTime @default(now())
 }
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String?
+  actorRole  String?
+  action     String
+  resource   String?
+  resourceId String?
+  meta       String   @default("{}")
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
+}
