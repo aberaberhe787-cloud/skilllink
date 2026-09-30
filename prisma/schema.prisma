@@ -10,24 +10,33 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  phone         String?
-  role          String    @default("seeker")
+  id             String    @id @default(cuid())
+  name           String?
+  email          String?   @unique
+  emailVerified  DateTime?
+  image          String?
+  phone          String?
+  role           String    @default("seeker")
   hashedPassword String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  accounts      Account[]
-  sessions      Session[]
-  providerProfile ProviderProfile?
-  seekerJobs    Job[]     @relation("SeekerJobs")
-  reviewsGiven  Review[]  @relation("ReviewsGiven")
-  reviewsReceived Review[] @relation("ReviewsReceived")
-  trainingProgress TrainingProgress[]
+  accounts           Account[]
+  sessions           Session[]
+  providerProfile    ProviderProfile?
+  seekerJobs         Job[]              @relation("SeekerJobs")
+  reviewsGiven       Review[]           @relation("ReviewsGiven")
+  reviewsReceived    Review[]           @relation("ReviewsReceived")
+  trainingProgress   TrainingProgress[]
+  referralsGiven     Referral[]         @relation("ReferralsGiven")
+  referralsReceived  Referral[]         @relation("ReferralsReceived")
+  wallet             Wallet?
+  disputesOpened     Dispute[]
+  following          Follow[]           @relation("Following")
+  communityPosts     CommunityPost[]
+  communityReplies   CommunityReply[]
+  recurringJobs      RecurringJob[]
+  businessAccounts   BusinessAccount[]
 }
 
 model Account {
@@ -43,9 +52,7 @@ model Account {
   scope             String?
   id_token          String?
   session_state     String?
-
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   @@unique([provider, providerAccountId])
 }
 
@@ -61,7 +68,6 @@ model VerificationToken {
   identifier String
   token      String   @unique
   expires    DateTime
-
   @@unique([identifier, token])
 }
 
@@ -69,7 +75,6 @@ model ProviderProfile {
   id                  String   @id @default(cuid())
   userId              String   @unique
   user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-
   bio                 String?
   experienceYears     Int      @default(0)
   serviceRadiusKm     Int      @default(10)
@@ -82,20 +87,17 @@ model ProviderProfile {
   responseTimeMinutes Int      @default(60)
   isAvailable         Boolean  @default(true)
   totalJobsCompleted  Int      @default(0)
-
   lat                 Float?
   lng                 Float?
   address             String?
-
   idDocumentUrl       String?
   certificateUrls     String   @default("[]")
-
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
-
   skills              ProviderSkill[]
   rates               ProviderRate[]
   jobs                Job[]    @relation("ProviderJobs")
+  followers           Follow[]
 }
 
 model ProviderSkill {
@@ -103,7 +105,6 @@ model ProviderSkill {
   providerId String
   provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
   category   String
-
   @@unique([providerId, category])
 }
 
@@ -113,108 +114,228 @@ model ProviderRate {
   provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
   category   String
   amount     Int
-
   @@unique([providerId, category])
 }
 
 model Job {
-  id            String   @id @default(cuid())
-  seekerId      String
-  seeker        User     @relation("SeekerJobs", fields: [seekerId], references: [id])
-  providerId    String?
-  provider      ProviderProfile? @relation("ProviderJobs", fields: [providerId], references: [id])
-
-  category      String
-  title         String
-  description   String
-  status        String   @default("open")
-
-  price         Int
-  platformFee   Int
+  id             String   @id @default(cuid())
+  seekerId       String
+  seeker         User     @relation("SeekerJobs", fields: [seekerId], references: [id])
+  providerId     String?
+  provider       ProviderProfile? @relation("ProviderJobs", fields: [providerId], references: [id])
+  category       String
+  title          String
+  description    String
+  status         String   @default("open")
+  price          Int
+  platformFee    Int
   providerPayout Int
-
-  lat           Float?
-  lng           Float?
-  address       String?
-
-  preferredTime String?
-  aiMatchScore  Float?
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  completedAt   DateTime?
-
-  payment       Payment?
-  reviews       Review[]
+  lat            Float?
+  lng            Float?
+  address        String?
+  preferredTime  String?
+  aiMatchScore   Float?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  completedAt    DateTime?
+  payment        Payment?
+  reviews        Review[]
+  photos         JobPhoto[]
+  dispute        Dispute?
+  tips           Tip[]
 }
 
 model Payment {
-  id              String   @id @default(cuid())
-  jobId           String   @unique
-  job             Job      @relation(fields: [jobId], references: [id])
-
-  amount          Int
-  platformFee     Int
-  providerAmount  Int
-
-  status          String   @default("pending")
-  provider        String?
-  externalId      String?
-  checkoutUrl     String?
-
-  paidAt          DateTime?
-  releasedAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  jobId          String   @unique
+  job            Job      @relation(fields: [jobId], references: [id])
+  amount         Int
+  platformFee    Int
+  providerAmount Int
+  status         String   @default("pending")
+  provider       String?
+  externalId     String?
+  checkoutUrl    String?
+  paidAt         DateTime?
+  releasedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model Review {
   id         String   @id @default(cuid())
   jobId      String
   job        Job      @relation(fields: [jobId], references: [id])
-
   fromUserId String
   fromUser   User     @relation("ReviewsGiven", fields: [fromUserId], references: [id])
   toUserId   String
   toUser     User     @relation("ReviewsReceived", fields: [toUserId], references: [id])
-
   rating     Int
   comment    String?
   photos     String   @default("[]")
-
   createdAt  DateTime @default(now())
-
   @@unique([jobId, fromUserId])
 }
 
 model TrainingCourse {
-  id             String   @id @default(cuid())
-  title          String
-  category       String
-  level          String
-  description    String?
-  durationMinutes Int     @default(30)
-  isFree         Boolean  @default(true)
-  lessonsCount   Int      @default(1)
-  contentUrl     String?
-
-  createdAt      DateTime @default(now())
-  progress       TrainingProgress[]
+  id              String   @id @default(cuid())
+  title           String
+  category        String
+  level           String
+  description     String?
+  durationMinutes Int      @default(30)
+  isFree          Boolean  @default(true)
+  lessonsCount    Int      @default(1)
+  contentUrl      String?
+  createdAt       DateTime @default(now())
+  progress        TrainingProgress[]
 }
 
 model TrainingProgress {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   courseId    String
   course      TrainingCourse @relation(fields: [courseId], references: [id])
-
-  completed   Boolean  @default(false)
+  completed   Boolean   @default(false)
   quizScore   Int?
   badgeEarned String?
   completedAt DateTime?
-
-  createdAt   DateTime @default(now())
-
+  createdAt   DateTime  @default(now())
   @@unique([userId, courseId])
+}
+
+model Referral {
+  id          String    @id @default(cuid())
+  code        String    @unique
+  referrerId  String
+  referrer    User      @relation("ReferralsGiven", fields: [referrerId], references: [id])
+  referredId  String?   @unique
+  referred    User?     @relation("ReferralsReceived", fields: [referredId], references: [id])
+  status      String    @default("pending")
+  rewardKes   Int       @default(200)
+  createdAt   DateTime  @default(now())
+  completedAt DateTime?
+}
+
+model Wallet {
+  id           String              @id @default(cuid())
+  userId       String              @unique
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balanceKes   Int                 @default(0)
+  pendingKes   Int                 @default(0)
+  updatedAt    DateTime            @updatedAt
+  transactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id          String   @id @default(cuid())
+  walletId    String
+  wallet      Wallet   @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  type        String
+  amountKes   Int
+  description String?
+  jobId       String?
+  createdAt   DateTime @default(now())
+}
+
+model JobPhoto {
+  id         String   @id @default(cuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  url        String
+  kind       String   @default("after")
+  uploadedBy String
+  createdAt  DateTime @default(now())
+}
+
+model Dispute {
+  id         String           @id @default(cuid())
+  jobId      String           @unique
+  job        Job              @relation(fields: [jobId], references: [id])
+  openedById String
+  openedBy   User             @relation(fields: [openedById], references: [id])
+  reason     String
+  status     String           @default("open")
+  resolution String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  messages   DisputeMessage[]
+}
+
+model DisputeMessage {
+  id        String   @id @default(cuid())
+  disputeId String
+  dispute   Dispute  @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  userId    String
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model Follow {
+  id         String          @id @default(cuid())
+  followerId String
+  follower   User            @relation("Following", fields: [followerId], references: [id], onDelete: Cascade)
+  providerId String
+  provider   ProviderProfile @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime        @default(now())
+  @@unique([followerId, providerId])
+}
+
+model CommunityPost {
+  id           String           @id @default(cuid())
+  authorId     String
+  author       User             @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  neighborhood String?
+  title        String
+  body         String
+  category     String?
+  createdAt    DateTime         @default(now())
+  replies      CommunityReply[]
+}
+
+model CommunityReply {
+  id        String        @id @default(cuid())
+  postId    String
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime      @default(now())
+}
+
+model Tip {
+  id         String   @id @default(cuid())
+  jobId      String
+  job        Job      @relation(fields: [jobId], references: [id])
+  fromUserId String
+  toUserId   String
+  amountKes  Int
+  createdAt  DateTime @default(now())
+}
+
+model RecurringJob {
+  id          String   @id @default(cuid())
+  seekerId    String
+  seeker      User     @relation(fields: [seekerId], references: [id])
+  providerId  String?
+  category    String
+  title       String
+  description String
+  price       Int
+  cadence     String
+  nextRunAt   DateTime
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+model BusinessAccount {
+  id          String   @id @default(cuid())
+  ownerId     String
+  owner       User     @relation(fields: [ownerId], references: [id])
+  companyName String
+  location    String?
+  isVerified  Boolean  @default(false)
+  plan        String   @default("free")
+  createdAt   DateTime @default(now())
 }
