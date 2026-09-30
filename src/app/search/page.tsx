@@ -7,6 +7,15 @@ import { getAIMatches } from "@/lib/ai-matching";
 import { SkillCategory, ProviderProfile } from "@/types";
 import ProviderCard from "@/components/ProviderCard";
 
+const CITIES = [
+  { name: "Nairobi CBD", lat: -1.286389, lng: 36.817223 },
+  { name: "Westlands", lat: -1.267, lng: 36.811 },
+  { name: "Karen", lat: -1.319, lng: 36.708 },
+  { name: "Eastleigh", lat: -1.27, lng: 36.85 },
+  { name: "Mombasa", lat: -4.0435, lng: 39.6682 },
+  { name: "Kisumu", lat: -0.0917, lng: 34.768 },
+];
+
 function SearchContent() {
   const searchParams = useSearchParams();
   const initialCategory =
@@ -15,12 +24,12 @@ function SearchContent() {
   const [category, setCategory] = useState<SkillCategory>(initialCategory);
   const [topOnly, setTopOnly] = useState(true);
   const [query, setQuery] = useState("");
+  const [cityIdx, setCityIdx] = useState(0);
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const seekerLat = -1.286389;
-  const seekerLng = 36.817223;
+  const city = CITIES[cityIdx];
 
   useEffect(() => {
     async function load() {
@@ -32,7 +41,7 @@ function SearchContent() {
         );
         if (!res.ok) throw new Error("Failed to load technicians");
         const data = await res.json();
-        setProviders(data);
+        setProviders(Array.isArray(data) ? data : []);
       } catch (err: any) {
         setError(err.message || "Could not load data");
         setProviders([]);
@@ -46,11 +55,11 @@ function SearchContent() {
   const matches = useMemo(() => {
     return getAIMatches(providers, {
       category,
-      seekerLat,
-      seekerLng,
+      seekerLat: city.lat,
+      seekerLng: city.lng,
       preferTopOnly: topOnly,
     });
-  }, [providers, category, topOnly]);
+  }, [providers, category, topOnly, city]);
 
   const filtered = query
     ? matches.filter(
@@ -61,74 +70,70 @@ function SearchContent() {
     : matches;
 
   return (
-    <div className="max-w-6xl mx-auto px-4 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">
-          Find skilled help near you
-        </h1>
-        <p className="text-gray-600 mt-1">
-          AI matches the best verified technicians around your location
+    <div className="max-w-6xl mx-auto px-4 py-6 md:py-10">
+      <div className="mb-6 md:mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold text-gray-900">Find skilled help near you</h1>
+        <p className="text-gray-600 mt-1 text-sm md:text-base">
+          AI ranks verified technicians by skill, distance, rating and availability · Prices in KES
         </p>
       </div>
 
-      <div className="bg-white rounded-2xl border border-gray-200 p-5 mb-8 shadow-sm">
-        <div className="grid md:grid-cols-3 gap-4">
+      <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5 mb-6 shadow-sm">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Skill category</label>
-            <select
-              value={category}
-              onChange={(e) => setCategory(e.target.value as SkillCategory)}
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white"
-            >
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Skill</label>
+            <select value={category} onChange={(e) => setCategory(e.target.value as SkillCategory)}
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
               {SKILL_CATEGORIES.map((c) => (
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Search by name</label>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="e.g. James, Amina…"
-              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Area</label>
+            <select value={cityIdx} onChange={(e) => setCityIdx(Number(e.target.value))}
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
+              {CITIES.map((c, i) => (
+                <option key={c.name} value={i}>{c.name}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Search name</label>
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. James, Amina…"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
           </div>
           <div className="flex items-end">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none py-2.5">
-              <input
-                type="checkbox"
-                checked={topOnly}
-                onChange={(e) => setTopOnly(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-              />
-              <span className="text-sm font-medium text-gray-700">Top AI matches only (≥75%)</span>
+            <label className="flex items-center gap-2.5 cursor-pointer select-none py-2.5 w-full rounded-xl border border-gray-200 px-3 hover:bg-gray-50">
+              <input type="checkbox" checked={topOnly} onChange={(e) => setTopOnly(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+              <span className="text-sm font-medium text-gray-700">Top matches only (≥75%)</span>
             </label>
           </div>
         </div>
       </div>
 
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-4">
         <p className="text-sm text-gray-600">
-          {loading ? "Loading…" : `${filtered.length} technician${filtered.length !== 1 ? "s" : ""} found • Sorted by AI Match`}
+          {loading ? "Loading technicians…" : `${filtered.length} result${filtered.length !== 1 ? "s" : ""} near ${city.name}`}
         </p>
+        <p className="text-xs text-gray-400">Sorted by AI Match score</p>
       </div>
 
       {error && (
-        <div className="mb-6 p-4 rounded-xl bg-amber-50 text-amber-800 text-sm">
-          {error}. Run <code className="bg-amber-100 px-1 rounded">npm run db:seed</code>.
+        <div className="mb-6 p-4 rounded-xl bg-amber-50 border border-amber-100 text-amber-900 text-sm">
+          <strong>Could not load live data.</strong> {error}
         </div>
       )}
 
       {loading ? (
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid md:grid-cols-2 gap-4">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-2xl border border-gray-200 p-5 h-64 animate-pulse">
+            <div key={i} className="bg-white rounded-2xl border border-gray-200 p-5 h-56 animate-pulse">
               <div className="flex gap-4">
-                <div className="w-16 h-16 rounded-full bg-gray-200" />
-                <div className="flex-1 space-y-2">
-                  <div className="h-4 bg-gray-200 rounded w-1/2" />
+                <div className="w-14 h-14 rounded-full bg-gray-200 shrink-0" />
+                <div className="flex-1 space-y-2 pt-1">
+                  <div className="h-4 bg-gray-200 rounded w-2/3" />
                   <div className="h-3 bg-gray-100 rounded w-1/3" />
                 </div>
               </div>
@@ -136,13 +141,15 @@ function SearchContent() {
           ))}
         </div>
       ) : filtered.length === 0 ? (
-        <div className="text-center py-20 bg-white rounded-2xl border border-gray-200">
+        <div className="text-center py-16 bg-white rounded-2xl border border-gray-200">
           <div className="text-4xl mb-3">🔍</div>
-          <p className="text-gray-600 font-medium">No matching technicians found</p>
-          <p className="text-sm text-gray-500 mt-1">Try a different category or turn off "Top only"</p>
+          <p className="text-gray-800 font-medium">No matching technicians found</p>
+          <p className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">
+            Try another skill, area, or turn off Top matches only.
+          </p>
         </div>
       ) : (
-        <div className="grid md:grid-cols-2 gap-5">
+        <div className="grid md:grid-cols-2 gap-4">
           {filtered.map((match) => (
             <ProviderCard key={match.provider.id} match={match} />
           ))}
