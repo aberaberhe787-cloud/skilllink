@@ -9,9 +9,11 @@ export function middleware(request: NextRequest) {
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
     "Permissions-Policy",
-    "camera=(), microphone=(), geolocation=(self)"
+    "camera=(), microphone=(), geolocation=(self), payment=()"
   );
   response.headers.set("X-XSS-Protection", "0");
+  response.headers.set("Cross-Origin-Opener-Policy", "same-origin-allow-popups");
+  response.headers.set("Cross-Origin-Resource-Policy", "same-site");
 
   if (request.nextUrl.protocol === "https:") {
     response.headers.set(
@@ -28,10 +30,12 @@ export function middleware(request: NextRequest) {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https:",
+      "connect-src 'self' https://api.flutterwave.com https://graph.facebook.com https://*.upstash.io",
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
+      "object-src 'none'",
+      "upgrade-insecure-requests",
     ].join("; ")
   );
 
