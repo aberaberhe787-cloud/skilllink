@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { isWhatsAppConfigured, sendWhatsApp } from "@/lib/whatsapp";
+import { rateLimit, clientIp, sanitizePhone } from "@/lib/security";
 
 export async function GET() {
   return NextResponse.json({
@@ -18,12 +19,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const ip = clientIp(req);
+  const rl = rateLimit(`wa:${(session.user as { id?: string }).id}:${ip}`, 5, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json({ error: "Too many messages. Try later." }, { status: 429 });
+  }
+
   try {
     const body = await req.json();
-    const phone = body.phone || (session.user as any).phone;
+    const phone = sanitizePhone(body.phone || (session.user as { phone?: string }).phone);
     if (!phone) {
       return NextResponse.json(
-        { error: "Phone required (E.164 e.g. +2547…)" },
+        { error: "Valid phone required (E.164 e.g. +2547…)" },
         { status: 400 }
       );
     }
@@ -39,7 +46,8 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json(result);
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Failed";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

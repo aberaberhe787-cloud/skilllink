@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const bodySchema = z.object({
   jobId: z.string(),
-  amount: z.number().positive(),
+  amount: z.number().positive().max(5_000_000),
   provider: z.enum(["flutterwave", "stripe", "mpesa", "cash"]).optional(),
 });
 
@@ -29,6 +29,12 @@ export async function POST(req: NextRequest) {
     const job = await prisma.job.findUnique({ where: { id: jobId } });
     if (!job) {
       return NextResponse.json({ error: "Job not found" }, { status: 404 });
+    }
+
+    const userId = (session.user as { id?: string }).id;
+    const role = (session.user as { role?: string }).role;
+    if (job.seekerId !== userId && role !== "admin") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const { platformFee, providerPayout } = calculateFees(amount);
@@ -77,8 +83,8 @@ export async function POST(req: NextRequest) {
       externalId: result.externalId,
       fees: { platformFee, providerPayout },
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error(err);
-    return NextResponse.json({ error: err.message || "Server error" }, { status: 500 });
+    return NextResponse.json({ error: "Server error" }, { status: 500 });
   }
 }
