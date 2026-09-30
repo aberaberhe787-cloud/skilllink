@@ -1,16 +1,13 @@
-// SkillLink Database Schema
-// PostgreSQL recommended for production. SQLite works for local MVP.
+// SkillLink Database Schema — PostgreSQL for Vercel/production
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite" // Change to "postgresql" for production
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// ==================== AUTH (NextAuth / Auth.js) ====================
 
 model User {
   id            String    @id @default(cuid())
@@ -19,14 +16,13 @@ model User {
   emailVerified DateTime?
   image         String?
   phone         String?
-  role          String    @default("seeker") // "provider" | "seeker" | "admin"
+  role          String    @default("seeker")
   hashedPassword String?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
   accounts      Account[]
   sessions      Session[]
-
   providerProfile ProviderProfile?
   seekerJobs    Job[]     @relation("SeekerJobs")
   reviewsGiven  Review[]  @relation("ReviewsGiven")
