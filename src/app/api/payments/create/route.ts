@@ -2,10 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { createPayment, calculateFees } from "@/lib/payments";
 import { prisma } from "@/lib/db";
+import { notifyJobParties } from "@/lib/whatsapp";
 import { z } from "zod";
 
 const bodySchema = z.object({
-  jobId: z.string().min(1),
+  jobId: z.string(),
   amount: z.number().positive(),
   provider: z.enum(["flutterwave", "stripe", "mpesa", "cash"]).optional(),
 });
@@ -47,6 +48,27 @@ export async function POST(req: NextRequest) {
 
     if (!result.success) {
       return NextResponse.json({ error: result.error }, { status: 500 });
+    }
+
+    try {
+      const full = await prisma.job.findUnique({
+        where: { id: jobId },
+        include: { seeker: true, provider: { include: { user: true } } },
+      });
+      if (full) {
+        await notifyJobParties({
+          event: "payment_held",
+          jobId: full.id,
+          jobTitle: full.title,
+          amountKes: amount,
+          seekerPhone: full.seeker.phone,
+          providerPhone: full.provider?.user?.phone,
+          seekerName: full.seeker.name,
+          providerName: full.provider?.user?.name,
+        });
+      }
+    } catch (e) {
+      console.error("WhatsApp payment notify failed:", e);
     }
 
     return NextResponse.json({

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
+import { notifyJobParties } from "@/lib/whatsapp";
 
 export async function POST(req: NextRequest) {
   try {
@@ -27,6 +28,29 @@ export async function POST(req: NextRequest) {
       where: { id: jobId },
       data: { status: "disputed" },
     });
+
+    try {
+      const full = await prisma.job.findUnique({
+        where: { id: jobId },
+        include: { seeker: true, provider: { include: { user: true } } },
+      });
+      if (full) {
+        await notifyJobParties({
+          event: "dispute_opened",
+          jobId: full.id,
+          jobTitle: full.title,
+          amountKes: full.price,
+          seekerPhone: full.seeker.phone,
+          providerPhone: full.provider?.user?.phone,
+          seekerName: full.seeker.name,
+          providerName: full.provider?.user?.name,
+          extra: reason.slice(0, 120),
+        });
+      }
+    } catch (e) {
+      console.error("WhatsApp dispute notify failed:", e);
+    }
+
     return NextResponse.json(dispute);
   } catch (e) {
     console.error(e);

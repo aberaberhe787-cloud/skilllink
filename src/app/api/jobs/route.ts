@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
 import { calculateFees } from "@/lib/payments";
+import { notifyJobParties } from "@/lib/whatsapp";
 import { z } from "zod";
 
 const createJobSchema = z.object({
@@ -63,6 +64,31 @@ export async function POST(req: NextRequest) {
         status: providerProfileId ? "requested" : "open",
       },
     });
+
+    if (providerProfileId) {
+      try {
+        const profile = await prisma.providerProfile.findUnique({
+          where: { id: providerProfileId },
+          include: { user: true },
+        });
+        const seeker = await prisma.user.findUnique({
+          where: { id: (session.user as any).id },
+        });
+        if (profile?.user?.phone) {
+          await notifyJobParties({
+            event: "job_requested",
+            jobId: job.id,
+            jobTitle: job.title,
+            amountKes: job.price,
+            providerPhone: profile.user.phone,
+            seekerName: seeker?.name || session.user.name,
+            seekerPhone: seeker?.phone,
+          });
+        }
+      } catch (notifyErr) {
+        console.error("WhatsApp notify failed (non-blocking):", notifyErr);
+      }
+    }
 
     return NextResponse.json({ success: true, job });
   } catch (err: any) {
