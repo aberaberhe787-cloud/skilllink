@@ -135,6 +135,10 @@ model Job {
   address        String?
   preferredTime  String?
   aiMatchScore   Float?
+  quotedPrice    Int?
+  quoteNote      String?
+  quotedAt       DateTime?
+  budgetMax      Int?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
   completedAt    DateTime?
@@ -305,13 +309,15 @@ model CommunityReply {
 }
 
 model Tip {
-  id         String   @id @default(cuid())
-  jobId      String
-  job        Job      @relation(fields: [jobId], references: [id])
-  fromUserId String
-  toUserId   String
-  amountKes  Int
-  createdAt  DateTime @default(now())
+  id              String   @id @default(cuid())
+  jobId           String
+  job             Job      @relation(fields: [jobId], references: [id])
+  fromUserId      String
+  toUserId        String
+  amountKes       Int
+  platformFeeKes  Int      @default(0)
+  providerAmount  Int      @default(0)
+  createdAt       DateTime @default(now())
 }
 
 model RecurringJob {
@@ -354,4 +360,13 @@ model AuditLog {
   @@index([action])
   @@index([actorId])
   @@index([createdAt])
+}
+
+model CategoryPriceCap {
+  id        String   @id @default(cuid())
+  category  String   @unique
+  maxKes    Int
+  minKes    Int      @default(100)
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
 }
