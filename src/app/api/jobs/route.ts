@@ -3,18 +3,19 @@ import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
 import { calculateFees } from "@/lib/payments";
 import { notifyJobParties } from "@/lib/whatsapp";
+import { sanitizeText, rateLimit, clientIp, publicError } from "@/lib/security";
 import { z } from "zod";
 
 const createJobSchema = z.object({
   providerId: z.string().optional(),
-  category: z.string().min(1),
-  title: z.string().min(3),
-  description: z.string().min(10),
-  price: z.number().positive(),
-  address: z.string().optional(),
-  lat: z.number().optional(),
-  lng: z.number().optional(),
-  preferredTime: z.string().optional(),
+  category: z.string().min(1).max(120),
+  title: z.string().min(3).max(120),
+  description: z.string().min(10).max(4000),
+  price: z.number().positive().max(5_000_000),
+  address: z.string().max(200).optional(),
+  lat: z.number().min(-90).max(90).optional(),
+  lng: z.number().min(-180).max(180).optional(),
+  preferredTime: z.string().max(80).optional(),
 });
 
 export async function POST(req: NextRequest) {
@@ -23,8 +24,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Please sign in first" }, { status: 401 });
   }
 
+  const rl = rateLimit(`job:${(session.user as { id?: string }).id}:${clientIp(req)}`, 20, 60_000);
+  if (!rl.ok) {
+    return NextResponse.json({ error: "Too many job requests" }, { status: 429 });
+  }
+
   try {
     const body = await req.json();
+    if (body.title) body.title = sanitizeText(body.title, 120);
+    if (body.description) body.description = sanitizeText(body.description, 4000);
+    if (body.address) body.address = sanitizeText(body.address, 200);
+    if (body.preferredTime) body.preferredTime = sanitizeText(body.preferredTime, 80);
+
     const parsed = createJobSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(
@@ -49,7 +60,7 @@ export async function POST(req: NextRequest) {
 
     const job = await prisma.job.create({
       data: {
-        seekerId: (session.user as any).id,
+        seekerId: (session.user as { id: string }).id,
         providerId: providerProfileId,
         category: data.category,
         title: data.title,
@@ -72,7 +83,7 @@ export async function POST(req: NextRequest) {
           include: { user: true },
         });
         const seeker = await prisma.user.findUnique({
-          where: { id: (session.user as any).id },
+          where: { id: (session.user as { id: string }).id },
         });
         if (profile?.user?.phone) {
           await notifyJobParties({
@@ -91,8 +102,11 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ success: true, job });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Create job error:", err);
-    return NextResponse.json({ error: err.message || "Failed to create job" }, { status: 500 });
+    return NextResponse.json(
+      { error: publicError(err, "Failed to create job") },
+      { status: 500 }
+    );
   }
 }
