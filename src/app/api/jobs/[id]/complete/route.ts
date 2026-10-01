@@ -10,7 +10,6 @@ const schema = z.object({
   markHeldFirst: z.boolean().optional(),
 });
 
-/** Provider marks done; seeker confirms → release 90% to wallet */
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -29,7 +28,6 @@ export async function POST(
     const body = await req.json().catch(() => ({}));
     const parsed = schema.safeParse(body);
     const as = parsed.success ? parsed.data.as : "seeker";
-    const markHeldFirst = parsed.success ? parsed.data.markHeldFirst : false;
 
     const userId = (session.user as { id: string }).id;
     const job = await prisma.job.findUnique({
@@ -63,14 +61,23 @@ export async function POST(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    if (job.payment && markHeldFirst && job.payment.status === "pending") {
-      await markPaymentHeld(job.payment.id);
-    }
+    const allowDemo =
+      process.env.ALLOW_DEMO_PAYMENTS === "true" ||
+      process.env.NODE_ENV !== "production";
 
     if (job.payment) {
-      const p = await prisma.payment.findUnique({ where: { id: job.payment.id } });
-      if (p && p.status === "pending") {
-        await markPaymentHeld(p.id);
+      const pmt = await prisma.payment.findUnique({ where: { id: job.payment.id } });
+      if (pmt && pmt.status === "pending") {
+        if (!allowDemo) {
+          return NextResponse.json(
+            {
+              error:
+                "Payment not confirmed yet. Complete Telebirr or M-Pesa payment first.",
+            },
+            { status: 402 }
+          );
+        }
+        await markPaymentHeld(pmt.id);
       }
     }
 
@@ -85,7 +92,12 @@ export async function POST(
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : "Release failed";
       return NextResponse.json(
-        { success: true, jobCompleted: true, paymentReleased: false, warning: msg },
+        {
+          success: true,
+          jobCompleted: true,
+          paymentReleased: false,
+          warning: msg,
+        },
         { status: 200 }
       );
     }
