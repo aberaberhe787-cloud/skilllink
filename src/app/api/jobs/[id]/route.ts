@@ -55,29 +55,9 @@ export async function GET(
   const isProvider = job.provider?.userId === userId;
   const isAdmin = role === "admin";
 
+  // BUG-01: only seeker, assigned provider, or admin
   if (!isSeeker && !isProvider && !isAdmin) {
-    return NextResponse.json({
-      id: job.id,
-      title: job.title,
-      category: job.category,
-      status: job.status,
-      price: job.price,
-      quotedPrice: job.quotedPrice,
-      description: job.description?.slice(0, 200),
-      address: null,
-      seeker: { id: job.seekerId, name: job.seeker?.name || null },
-      provider: job.provider
-        ? {
-            id: job.provider.id,
-            userId: job.provider.userId,
-            user: { id: job.provider.userId, name: job.provider.user?.name || null },
-          }
-        : null,
-      payment: null,
-      photos: [],
-      reviews: job.reviews,
-      _redacted: true,
-    });
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
   return NextResponse.json(job);
