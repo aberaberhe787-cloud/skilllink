@@ -15,51 +15,78 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const session = await auth();
-  if (!session?.user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   const { id } = await params;
-  if (!isSafeId(id)) return NextResponse.json({ error: "Invalid job id" }, { status: 400 });
+  if (!isSafeId(id)) {
+    return NextResponse.json({ error: "Invalid job id" }, { status: 400 });
+  }
+
   const userId = (session.user as { id: string }).id;
-  if (!rateLimit(`review:${userId}:${clientIp(req)}`, 10, 60_000).ok) {
+  const rl = rateLimit(`review:${userId}:${clientIp(req)}`, 10, 60_000);
+  if (!rl.ok) {
     return NextResponse.json({ error: "Too many requests" }, { status: 429 });
   }
+
   try {
     const body = await req.json();
     const parsed = schema.safeParse(body);
-    if (!parsed.success) return NextResponse.json({ error: "Rating 1–5 required" }, { status: 400 });
-    const job = await prisma.job.findUnique({ where: { id }, include: { provider: true } });
-    if (!job) return NextResponse.json({ error: "Job not found" }, { status: 404 });
-    if (job.seekerId !== userId && job.provider?.userId !== userId) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    if (!parsed.success) {
+      return NextResponse.json({ error: "Rating 1–5 required" }, { status: 400 });
     }
-    if (job.status !== "completed") {
-      return NextResponse.json({ error: "Job must be completed first" }, { status: 400 });
+
+    const job = await prisma.job.findUnique({
+      where: { id },
+      include: { provider: true },
+    });
+    if (!job) {
+      return NextResponse.json({ error: "Job not found" }, { status: 404 });
     }
-    const toUserId =
-      parsed.data.toUserId ||
-      (job.seekerId === userId ? job.provider?.userId : job.seekerId);
-    if (!toUserId) return NextResponse.json({ error: "No recipient" }, { status: 400 });
-    const review = await prisma.review.create({
-      data: {
+
+    if (job.seekerId !== userId) {
+      return NextResponse.json({ error: "Only the customer can review after the job" }, { status: 403 });
+    }
+
+    const toUserId = parsed.data.toUserId || job.provider?.userId;
+    if (!toUserId) {
+      return NextResponse.json({ error: "No technician to review" }, { status: 400 });
+    }
+
+    const review = await prisma.review.upsert({
+      where: { jobId_fromUserId: { jobId: id, fromUserId: userId } },
+      create: {
         jobId: id,
         fromUserId: userId,
         toUserId,
         rating: parsed.data.rating,
-        comment: parsed.data.comment ? sanitizeText(parsed.data.comment, 1000) : undefined,
+        comment: parsed.data.comment ? sanitizeText(parsed.data.comment, 1000) : null,
+      },
+      update: {
+        rating: parsed.data.rating,
+        comment: parsed.data.comment ? sanitizeText(parsed.data.comment, 1000) : null,
       },
     });
-    if (job.provider && toUserId === job.provider.userId) {
+
+    if (job.providerId) {
       const agg = await prisma.review.aggregate({
         where: { toUserId },
         _avg: { rating: true },
         _count: true,
       });
       await prisma.providerProfile.update({
-        where: { id: job.provider.id },
-        data: { rating: agg._avg.rating || parsed.data.rating, reviewCount: agg._count },
+        where: { id: job.providerId },
+        data: {
+          rating: agg._avg.rating || 0,
+          reviewCount: agg._count,
+        },
       });
     }
+
     return NextResponse.json({ success: true, review });
   } catch (err: unknown) {
+    console.error(err);
     return NextResponse.json({ error: publicError(err, "Review failed") }, { status: 500 });
   }
 }
