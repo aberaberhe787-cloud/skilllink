@@ -1,11 +1,14 @@
 /**
- * SkillLink Ethiopia – Escrow
- * Job fee 10% · Bonus 5% · Telebirr + M-Pesa only
+ * SkillLink Ethiopia – Escrow payments
+ * - Job fee: 10% platform commission
+ * - Customer bonus: 5% platform commission
+ * - Gateways: Telebirr + M-Pesa only
  */
 
 import { prisma } from "@/lib/db";
 
 export const CURRENCY = "ETB";
+export const CURRENCY_LABEL = "ETB";
 export const PLATFORM_FEE_PERCENT = 10;
 export const BONUS_FEE_PERCENT = 5;
 
@@ -33,27 +36,45 @@ export const DEFAULT_CATEGORY_CAPS: Record<string, { maxKes: number; minKes: num
   "Other technical help": { maxKes: 6000, minKes: 200 },
 };
 
-export async function getCategoryCap(category: string) {
+export async function getCategoryCap(category: string): Promise<{ maxKes: number; minKes: number }> {
   try {
     const row = await prisma.categoryPriceCap.findUnique({ where: { category } });
     if (row) return { maxKes: row.maxKes, minKes: row.minKes };
-  } catch {}
+  } catch {
+    /* table may not exist */
+  }
   return DEFAULT_CATEGORY_CAPS[category] || { maxKes: 6000, minKes: 200 };
 }
 
 export type PaymentProvider = "telebirr" | "mpesa";
 
-export async function createPayment(input: {
+export interface CreatePaymentInput {
   jobId: string;
   amount: number;
+  currency?: string;
   customerEmail: string;
   customerName: string;
   customerPhone?: string;
   redirectUrl: string;
   provider?: PaymentProvider;
-}) {
+}
+
+export interface CreatePaymentResult {
+  success: boolean;
+  paymentId?: string;
+  checkoutUrl?: string;
+  externalId?: string;
+  instructions?: string;
+  error?: string;
+}
+
+export async function createPayment(
+  input: CreatePaymentInput
+): Promise<CreatePaymentResult> {
   const { platformFee, providerPayout } = calculateFees(input.amount);
-  const gateway: PaymentProvider = input.provider === "mpesa" ? "mpesa" : "telebirr";
+  const gateway: PaymentProvider =
+    input.provider === "mpesa" ? "mpesa" : "telebirr";
+
   try {
     const payment = await prisma.payment.create({
       data: {
@@ -65,18 +86,38 @@ export async function createPayment(input: {
         provider: gateway,
       },
     });
-    const externalId = gateway === "telebirr" ? `TELEBIRR_${payment.id}` : `MPESA_ET_${payment.id}`;
+
+    const externalId =
+      gateway === "telebirr"
+        ? `TELEBIRR_${payment.id}`
+        : `MPESA_ET_${payment.id}`;
+
     const instructions =
       gateway === "telebirr"
-        ? `Telebirr: confirm push on ${input.customerPhone || "your phone"} (demo ${externalId}).`
-        : `M-Pesa Ethiopia: STK PIN (demo ${externalId}).`;
+        ? `Telebirr: confirm the push on ${input.customerPhone || "your phone"} (demo id ${externalId}). Set TELEBIRR_APP_ID / TELEBIRR_APP_KEY for live.`
+        : `M-Pesa Ethiopia: enter PIN on the STK prompt (demo id ${externalId}). Set MPESA_CONSUMER_KEY / MPESA_PASSKEY for live.`;
+
     await prisma.payment.update({
       where: { id: payment.id },
       data: { externalId, checkoutUrl: null },
     });
-    return { success: true as const, paymentId: payment.id, externalId, instructions };
+
+    if (gateway === "telebirr" && process.env.TELEBIRR_APP_ID && process.env.TELEBIRR_APP_KEY) {
+      console.log("[telebirr] live credentials detected – wire order API here", externalId);
+    }
+    if (gateway === "mpesa" && process.env.MPESA_CONSUMER_KEY && process.env.MPESA_PASSKEY) {
+      console.log("[mpesa-et] live credentials detected – wire STK push here", externalId);
+    }
+
+    return {
+      success: true,
+      paymentId: payment.id,
+      externalId,
+      instructions,
+    };
   } catch (err: unknown) {
-    return { success: false as const, error: err instanceof Error ? err.message : "Payment failed" };
+    const message = err instanceof Error ? err.message : "Payment create failed";
+    return { success: false, error: message };
   }
 }
 
@@ -91,22 +132,27 @@ export async function releasePaymentToWallet(jobId: string) {
   const payment = await prisma.payment.findUnique({ where: { jobId } });
   if (!payment) throw new Error("Payment not found");
   if (payment.status === "released") return payment;
+  if (payment.status !== "held" && payment.status !== "pending") {
+    throw new Error(`Cannot release payment in status ${payment.status}`);
+  }
+
   const job = await prisma.job.findUnique({
     where: { id: jobId },
     include: { provider: true },
   });
   if (!job?.provider?.userId) throw new Error("No provider on job");
+
   const amount = payment.providerAmount;
-  let wallet = await prisma.wallet.findUnique({ where: { userId: job.provider.userId } });
+
+  let wallet = await prisma.wallet.findUnique({
+    where: { userId: job.provider.userId },
+  });
   if (!wallet) {
-    wallet = await prisma.wallet.create({ data: { userId: job.provider.userId, balanceKes: 0 } });
-  }
-  if (payment.status === "pending") {
-    await prisma.payment.update({
-      where: { id: payment.id },
-      data: { status: "held", paidAt: new Date() },
+    wallet = await prisma.wallet.create({
+      data: { userId: job.provider.userId, balanceKes: 0 },
     });
   }
+
   await prisma.$transaction([
     prisma.payment.update({
       where: { id: payment.id },
@@ -121,10 +167,11 @@ export async function releasePaymentToWallet(jobId: string) {
         walletId: wallet.id,
         type: "job_payout",
         amountKes: amount,
-        description: `Job payout (90%) – ${job.title}`,
+        description: `Job payout (90% of fee) – ${job.title}`,
         jobId,
       },
     }),
   ]);
+
   return prisma.payment.findUnique({ where: { id: payment.id } });
 }
