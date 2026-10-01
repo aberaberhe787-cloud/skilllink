@@ -1,7 +1,6 @@
 /**
  * SkillLink Ethiopia – Escrow payments
- * - Job fee: 10% platform commission
- * - Customer bonus: 5% platform commission
+ * - Job fee: 10% · Bonus: 5%
  * - Gateways: Telebirr + M-Pesa only
  */
 
@@ -87,32 +86,55 @@ export async function createPayment(
       },
     });
 
-    const externalId =
+    let externalId =
       gateway === "telebirr"
         ? `TELEBIRR_${payment.id}`
         : `MPESA_ET_${payment.id}`;
+    let checkoutUrl: string | undefined;
+    let instructions: string;
 
-    const instructions =
-      gateway === "telebirr"
-        ? `Telebirr: confirm the push on ${input.customerPhone || "your phone"} (demo id ${externalId}). Set TELEBIRR_APP_ID / TELEBIRR_APP_KEY for live.`
-        : `M-Pesa Ethiopia: enter PIN on the STK prompt (demo id ${externalId}). Set MPESA_CONSUMER_KEY / MPESA_PASSKEY for live.`;
+    if (gateway === "telebirr") {
+      const { createTelebirrOrder, isTelebirrConfigured } = await import("./telebirr");
+      if (isTelebirrConfigured()) {
+        const amountStr = (input.amount / 1).toFixed(2);
+        const order = await createTelebirrOrder({
+          outTradeNo: externalId,
+          subject: `SkillLink job ${input.jobId}`.slice(0, 120),
+          totalAmount: amountStr,
+          returnUrl: input.redirectUrl,
+          receiveName: "SkillLink Ethiopia",
+        });
+        if (order.ok) {
+          checkoutUrl = order.toPayUrl;
+          if (order.merchOrderId) externalId = order.merchOrderId;
+          instructions = order.toPayUrl
+            ? `Open Telebirr checkout to pay ETB ${input.amount.toLocaleString()}.`
+            : order.receiveCode
+              ? `Telebirr receiveCode: ${order.receiveCode}`
+              : `Telebirr order created (${order.mode}).`;
+        } else {
+          instructions = `Telebirr sandbox incomplete (${order.error}). Demo id ${externalId}.`;
+          console.warn("[telebirr]", order.error);
+        }
+      } else {
+        instructions = `Telebirr demo: confirm on ${input.customerPhone || "your phone"} (id ${externalId}). Set TELEBIRR_* credentials for sandbox.`;
+      }
+    } else if (process.env.MPESA_CONSUMER_KEY && process.env.MPESA_PASSKEY) {
+      instructions = `M-Pesa STK will be sent to ${input.customerPhone || "your phone"} (id ${externalId}).`;
+    } else {
+      instructions = `M-Pesa demo (id ${externalId}). Set MPESA_* for live STK.`;
+    }
 
     await prisma.payment.update({
       where: { id: payment.id },
-      data: { externalId, checkoutUrl: null },
+      data: { externalId, checkoutUrl: checkoutUrl || null },
     });
-
-    if (gateway === "telebirr" && process.env.TELEBIRR_APP_ID && process.env.TELEBIRR_APP_KEY) {
-      console.log("[telebirr] live credentials detected – wire order API here", externalId);
-    }
-    if (gateway === "mpesa" && process.env.MPESA_CONSUMER_KEY && process.env.MPESA_PASSKEY) {
-      console.log("[mpesa-et] live credentials detected – wire STK push here", externalId);
-    }
 
     return {
       success: true,
       paymentId: payment.id,
       externalId,
+      checkoutUrl,
       instructions,
     };
   } catch (err: unknown) {
