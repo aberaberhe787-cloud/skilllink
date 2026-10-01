@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/lib/auth/auth";
 import { prisma } from "@/lib/db";
 import { notifyJobParties, WhatsAppEvent } from "@/lib/whatsapp";
-import { isSafeId, jobStatusSchema, sanitizeText, publicError } from "@/lib/security";
+import {
+  isSafeId,
+  jobStatusSchema,
+  sanitizeText,
+  publicError,
+} from "@/lib/security";
 
 const STATUS_TO_EVENT: Record<string, WhatsAppEvent> = {
   accepted: "job_accepted",
@@ -10,6 +15,73 @@ const STATUS_TO_EVENT: Record<string, WhatsAppEvent> = {
   completed: "job_completed",
   disputed: "dispute_opened",
 };
+
+export async function GET(
+  _req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await auth();
+  if (!session?.user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await params;
+  if (!isSafeId(id)) {
+    return NextResponse.json({ error: "Invalid job id" }, { status: 400 });
+  }
+
+  const userId = (session.user as { id?: string }).id;
+  const role = (session.user as { role?: string }).role;
+
+  const job = await prisma.job.findUnique({
+    where: { id },
+    include: {
+      seeker: { select: { id: true, name: true, phone: true, email: true } },
+      provider: {
+        include: {
+          user: { select: { id: true, name: true, phone: true } },
+        },
+      },
+      payment: true,
+      photos: true,
+      reviews: true,
+    },
+  });
+  if (!job) {
+    return NextResponse.json({ error: "Job not found" }, { status: 404 });
+  }
+
+  const isSeeker = job.seekerId === userId;
+  const isProvider = job.provider?.userId === userId;
+  const isAdmin = role === "admin";
+
+  if (!isSeeker && !isProvider && !isAdmin) {
+    return NextResponse.json({
+      id: job.id,
+      title: job.title,
+      category: job.category,
+      status: job.status,
+      price: job.price,
+      quotedPrice: job.quotedPrice,
+      description: job.description?.slice(0, 200),
+      address: null,
+      seeker: { id: job.seekerId, name: job.seeker?.name || null },
+      provider: job.provider
+        ? {
+            id: job.provider.id,
+            userId: job.provider.userId,
+            user: { id: job.provider.userId, name: job.provider.user?.name || null },
+          }
+        : null,
+      payment: null,
+      photos: [],
+      reviews: job.reviews,
+      _redacted: true,
+    });
+  }
+
+  return NextResponse.json(job);
+}
 
 export async function PATCH(
   req: NextRequest,
@@ -42,7 +114,10 @@ export async function PATCH(
   try {
     const job = await prisma.job.findUnique({
       where: { id },
-      include: { seeker: true, provider: { include: { user: true } } },
+      include: {
+        seeker: true,
+        provider: { include: { user: true } },
+      },
     });
 
     if (!job) {
