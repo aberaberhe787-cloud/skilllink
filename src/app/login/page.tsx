@@ -4,11 +4,7 @@ import { signIn } from "next-auth/react";
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import {
-  signInWithFirebaseGoogle,
-  signInWithFirebaseEmail,
-} from "@/lib/firebase-auth";
-import { ShieldCheck, Lock, Mail, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { signInWithFirebaseGoogle } from "@/lib/firebase-auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -18,14 +14,38 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // Firebase Google Login
+  async function handleCredentials(e: React.FormEvent) {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+
+    try {
+      const res = await signIn("credentials", {
+        email,
+        password,
+        redirect: false,
+      });
+
+      setLoading(false);
+      if (res?.error) {
+        setError("Invalid email or password. Check your details and try again.");
+      } else {
+        router.push("/");
+        router.refresh();
+      }
+    } catch {
+      setLoading(false);
+      setError("Sign in failed. Check your connection and try again.");
+    }
+  }
+
   async function handleGoogleLogin() {
     setLoading(true);
     setError("");
     try {
       const fbUser = await signInWithFirebaseGoogle();
       if (!fbUser?.email) {
-        setError("Failed to retrieve user email from Google.");
+        setError("Could not retrieve email from Google.");
         setLoading(false);
         return;
       }
@@ -44,10 +64,9 @@ export default function LoginPage() {
 
       if (!syncRes.ok) {
         const errData = await syncRes.json().catch(() => ({}));
-        throw new Error(errData.error || "Failed to sync account with server.");
+        throw new Error(errData.error || "Failed to sync account.");
       }
 
-      // Create NextAuth app session
       const res = await signIn("credentials", {
         email: fbUser.email,
         isFirebase: "true",
@@ -55,7 +74,7 @@ export default function LoginPage() {
       });
 
       if (res?.error) {
-        setError("Session setup failed. Please try again.");
+        setError("Session establishment failed.");
       } else {
         router.push("/");
         router.refresh();
@@ -66,82 +85,20 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      if (fbErr.code === "auth/unauthorized-domain") {
-        setError("Firebase domain is not authorized in the Firebase console. Please add this domain under Authentication > Settings > Authorized domains.");
+      if (
+        fbErr.code === "auth/operation-not-allowed" ||
+        fbErr.code === "auth/internal-error"
+      ) {
+        setError(
+          "Google Sign-In is not enabled yet in your Firebase console. Please go to Firebase Console > Authentication > Sign-in method and enable Google."
+        );
+      } else if (fbErr.code === "auth/unauthorized-domain") {
+        setError(
+          "This domain needs to be added under Firebase Console > Authentication > Settings > Authorized domains."
+        );
       } else {
         setError(fbErr.message || "Google sign-in failed. Please try again.");
       }
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // Email / Password Login (attempts Firebase Auth first, with credentials fallback)
-  async function handleEmailLogin(e: React.FormEvent) {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-
-    try {
-      // 1. Try Firebase Email authentication first
-      let firebaseSucceeded = false;
-      try {
-        const fbUser = await signInWithFirebaseEmail(email, password);
-        if (fbUser?.email) {
-          firebaseSucceeded = true;
-          // Sync with database
-          await fetch("/api/auth/firebase", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              email: fbUser.email,
-              name: fbUser.displayName,
-              photoUrl: fbUser.photoURL,
-              firebaseUid: fbUser.uid,
-            }),
-          });
-
-          // Establish session
-          const res = await signIn("credentials", {
-            email: fbUser.email,
-            isFirebase: "true",
-            redirect: false,
-          });
-
-          if (res?.error) {
-            setError("Session establishment failed.");
-          } else {
-            router.push("/");
-            router.refresh();
-            return;
-          }
-        }
-      } catch (fbErr: unknown) {
-        const fbError = fbErr as { code?: string };
-        // If wrong password was provided for an existing Firebase user
-        if (fbError.code === "auth/wrong-password" || fbError.code === "auth/invalid-credential") {
-          // Check standard credentials fallback for demo accounts
-        }
-      }
-
-      // 2. Standard credentials check (for seeded/demo accounts or fallback)
-      if (!firebaseSucceeded) {
-        const res = await signIn("credentials", {
-          email,
-          password,
-          redirect: false,
-        });
-
-        if (res?.error) {
-          setError("Invalid email or password. Please verify your details.");
-        } else {
-          router.push("/");
-          router.refresh();
-        }
-      }
-    } catch (err: unknown) {
-      const e = err as { message?: string };
-      setError(e.message || "Sign in failed. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -170,29 +127,30 @@ export default function LoginPage() {
             <p className="text-gray-500 text-sm mt-1.5">
               Sign in to find help or manage your technician jobs
             </p>
-            <div className="inline-flex items-center gap-1.5 mt-2 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200/60 text-[11px] font-medium text-amber-800">
-              <ShieldCheck className="w-3.5 h-3.5 text-amber-600" />
-              <span>Firebase Authentication</span>
-            </div>
           </div>
 
           {error && (
-            <div role="alert" className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm flex gap-2 items-start">
-              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+            <div role="alert" className="mb-5 p-3.5 rounded-xl bg-red-50 border border-red-100 text-red-700 text-sm flex gap-2">
+              <span className="shrink-0">⚠</span>
               <span>{error}</span>
             </div>
           )}
 
-          {/* Firebase Google Sign In */}
           <div className="space-y-2.5 mb-5">
             <button
               type="button"
               onClick={handleGoogleLogin}
               disabled={loading}
-              className="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition font-medium text-sm text-gray-800 shadow-xs disabled:opacity-60 disabled:cursor-not-allowed"
+              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition font-medium text-sm text-gray-800 disabled:opacity-60"
             >
-              <ShieldCheck className="w-4 h-4 text-blue-600" />
-              <span>Continue with Google (Firebase)</span>
+              Continue with Google
+            </button>
+            <button
+              type="button"
+              onClick={() => signIn("linkedin", { callbackUrl: "/" })}
+              className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl border border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition font-medium text-sm text-gray-800"
+            >
+              Continue with LinkedIn
             </button>
           </div>
 
@@ -205,24 +163,20 @@ export default function LoginPage() {
             </div>
           </div>
 
-          <form onSubmit={handleEmailLogin} className="space-y-4">
+          <form onSubmit={handleCredentials} className="space-y-4">
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">Email</label>
-              <div className="relative">
-                <input
-                  id="email"
-                  type="email"
-                  autoComplete="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="you@example.com"
-                  required
-                  className="w-full rounded-xl border border-gray-300 pl-10 pr-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
-                />
-                <Mail className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              </div>
+              <input
+                id="email"
+                type="email"
+                autoComplete="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+                className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+              />
             </div>
-
             <div>
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
               <div className="relative">
@@ -234,26 +188,23 @@ export default function LoginPage() {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full rounded-xl border border-gray-300 pl-10 pr-11 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+                  className="w-full rounded-xl border border-gray-300 px-3.5 py-2.5 pr-11 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
                 />
-                <Lock className="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 p-1"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-medium text-gray-500 hover:text-gray-800"
                 >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  {showPassword ? "Hide" : "Show"}
                 </button>
               </div>
             </div>
-
             <button
               type="submit"
               disabled={loading}
               className="w-full py-3 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-not-allowed shadow-sm shadow-blue-600/20"
             >
-              {loading ? "Signing in…" : "Sign in"}
+              {loading ? "Signing in…" : "Sign in with email"}
             </button>
           </form>
 
@@ -265,7 +216,7 @@ export default function LoginPage() {
 
         <div className="mt-5 rounded-2xl border border-dashed border-gray-300 bg-white/60 p-4">
           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2.5 text-center">
-            Demo quick login
+            Try a demo account
           </p>
           <div className="flex flex-wrap justify-center gap-2">
             <button type="button" onClick={() => fillDemo("seeker")} className="text-xs px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 font-medium hover:bg-blue-100 transition">
