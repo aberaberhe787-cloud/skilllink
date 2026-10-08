@@ -33,15 +33,19 @@ export default function AdminVerificationPage() {
       router.push("/login");
       return;
     }
-    fetchProviders();
-  }, [session, status]);
-
-  async function fetchProviders() {
-    setLoading(true);
-    const res = await fetch("/api/admin/verification");
-    if (res.ok) setProviders(await res.json());
-    setLoading(false);
-  }
+    let ignore = false;
+    async function startFetching() {
+      setLoading(true);
+      const res = await fetch("/api/admin/verification");
+      if (res.ok) {
+        const data = await res.json();
+        if (!ignore) setProviders(data);
+      }
+      if (!ignore) setLoading(false);
+    }
+    startFetching();
+    return () => { ignore = true; };
+  }, [session, status, router]);
 
   async function handleAction(id: string, action: "approve" | "reject" | "needs_info") {
     setActionLoading(id);

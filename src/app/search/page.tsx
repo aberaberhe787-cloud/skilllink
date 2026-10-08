@@ -23,6 +23,8 @@ function SearchContent() {
 
   const [category, setCategory] = useState<SkillCategory>(initialCategory);
   const [topOnly, setTopOnly] = useState(true);
+  const [minPrice, setMinPrice] = useState("");
+  const [maxPrice, setMaxPrice] = useState("");
   const [query, setQuery] = useState("");
   const [cityIdx, setCityIdx] = useState(0);
   const [providers, setProviders] = useState<ProviderProfile[]>([]);
@@ -61,13 +63,18 @@ function SearchContent() {
     });
   }, [providers, category, topOnly, city]);
 
-  const filtered = query
-    ? matches.filter(
-        (m) =>
-          m.provider.name.toLowerCase().includes(query.toLowerCase()) ||
+  const filtered = useMemo(() => {
+    return matches.filter((m) => {
+      const providerPrice = m.provider.fixedRates?.[category] ?? m.provider.hourlyRate ?? 0;
+      const matchesQuery = query
+        ? m.provider.name.toLowerCase().includes(query.toLowerCase()) ||
           m.provider.bio.toLowerCase().includes(query.toLowerCase())
-      )
-    : matches;
+        : true;
+      const matchesMin = minPrice ? providerPrice >= Number(minPrice) : true;
+      const matchesMax = maxPrice ? providerPrice <= Number(maxPrice) : true;
+      return matchesQuery && matchesMin && matchesMax;
+    });
+  }, [matches, query, minPrice, maxPrice, category]);
 
   return (
     <div className="max-w-6xl mx-auto px-4 py-6 md:py-10">
@@ -79,8 +86,8 @@ function SearchContent() {
       </div>
 
       <div className="bg-white rounded-2xl border border-gray-200 p-4 md:p-5 mb-6 shadow-sm">
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
-          <div>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-6 gap-3 md:gap-4">
+          <div className="lg:col-span-2">
             <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Skill</label>
             <select value={category} onChange={(e) => setCategory(e.target.value as SkillCategory)}
               className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white">
@@ -88,6 +95,16 @@ function SearchContent() {
                 <option key={c} value={c}>{c}</option>
               ))}
             </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Min KES</label>
+            <input type="number" value={minPrice} onChange={(e) => setMinPrice(e.target.value)} placeholder="0"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Max KES</label>
+            <input type="number" value={maxPrice} onChange={(e) => setMaxPrice(e.target.value)} placeholder="No max"
+              className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Area</label>
@@ -98,18 +115,18 @@ function SearchContent() {
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Search name</label>
-            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="e.g. James, Amina…"
+          <div className="hidden lg:block">
+            <label className="block text-xs font-medium text-gray-500 mb-1.5 uppercase tracking-wide">Search</label>
+            <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Name..."
               className="w-full rounded-xl border border-gray-300 px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500" />
           </div>
-          <div className="flex items-end">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none py-2.5 w-full rounded-xl border border-gray-200 px-3 hover:bg-gray-50">
-              <input type="checkbox" checked={topOnly} onChange={(e) => setTopOnly(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-              <span className="text-sm font-medium text-gray-700">Top matches only (≥75%)</span>
-            </label>
-          </div>
+        </div>
+        <div className="mt-4 flex items-center gap-4">
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <input type="checkbox" checked={topOnly} onChange={(e) => setTopOnly(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
+            <span className="text-sm font-medium text-gray-700">Top matches only</span>
+          </label>
         </div>
       </div>
 

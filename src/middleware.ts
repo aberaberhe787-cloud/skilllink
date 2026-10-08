@@ -5,7 +5,6 @@ export function middleware(request: NextRequest) {
   const response = NextResponse.next();
 
   response.headers.set("X-Content-Type-Options", "nosniff");
-  response.headers.set("X-Frame-Options", "DENY");
   response.headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   response.headers.set(
     "Permissions-Policy",
@@ -31,7 +30,6 @@ export function middleware(request: NextRequest) {
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
       "connect-src 'self' https://api.flutterwave.com https://graph.facebook.com https://*.upstash.io",
-      "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
       "object-src 'none'",
