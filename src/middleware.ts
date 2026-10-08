@@ -25,11 +25,11 @@ export function middleware(request: NextRequest) {
     "Content-Security-Policy",
     [
       "default-src 'self'",
-      "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+      "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.googletagmanager.com https://*.google-analytics.com",
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob: https:",
       "font-src 'self' data:",
-      "connect-src 'self' https://api.flutterwave.com https://graph.facebook.com https://*.upstash.io",
+      "connect-src 'self' https://api.flutterwave.com https://graph.facebook.com https://*.upstash.io https://*.googleapis.com https://*.firebaseio.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
       "base-uri 'self'",
       "form-action 'self'",
       "object-src 'none'",

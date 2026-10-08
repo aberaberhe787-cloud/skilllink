@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { useState } from "react";
+import { signOutFirebase } from "@/lib/firebase-auth";
 
 export default function Navbar() {
   const { data: session } = useSession();
   const role = (session?.user as any)?.role;
   const [open, setOpen] = useState(false);
+
+  async function handleSignOut() {
+    await signOutFirebase();
+    signOut({ callbackUrl: "/" });
+  }
 
   const links = [
     { href: "/search", label: "Find help" },
@@ -42,7 +48,7 @@ export default function Navbar() {
               <Link href="/wallet" className="text-sm text-gray-600 hover:text-blue-600">Wallet</Link>
               <Link href="/referrals" className="text-sm text-gray-600 hover:text-blue-600">Invite</Link>
               <span className="text-sm text-gray-500 max-w-[100px] truncate">{session.user?.name || session.user?.email}</span>
-              <button onClick={() => signOut({ callbackUrl: "/" })} className="text-sm font-medium text-gray-700 hover:text-blue-600">Sign out</button>
+              <button onClick={handleSignOut} className="text-sm font-medium text-gray-700 hover:text-blue-600">Sign out</button>
             </>
           ) : (
             <>
@@ -65,7 +71,7 @@ export default function Navbar() {
           )}
           <div className="pt-2 border-t border-gray-100 flex gap-2">
             {session ? (
-              <button onClick={() => { setOpen(false); signOut({ callbackUrl: "/" }); }} className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-xl">Sign out</button>
+              <button onClick={() => { setOpen(false); handleSignOut(); }} className="flex-1 py-2.5 text-sm font-medium border border-gray-300 rounded-xl">Sign out</button>
             ) : (
               <>
                 <Link href="/login" className="flex-1 text-center py-2.5 text-sm font-medium border border-gray-300 rounded-xl" onClick={() => setOpen(false)}>Log in</Link>

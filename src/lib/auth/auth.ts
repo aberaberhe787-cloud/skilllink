@@ -9,7 +9,8 @@ import { z } from "zod";
 
 const credentialsSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(6),
+  password: z.string().optional(),
+  isFirebase: z.string().optional(),
 });
 
 const providers: any[] = [];
@@ -56,15 +57,28 @@ providers.push(
     credentials: {
       email: { label: "Email", type: "email" },
       password: { label: "Password", type: "password" },
+      isFirebase: { label: "isFirebase", type: "text" },
     },
     async authorize(credentials) {
       const parsed = credentialsSchema.safeParse(credentials);
       if (!parsed.success) return null;
 
-      const { email, password } = parsed.data;
+      const { email, password, isFirebase } = parsed.data;
 
       const user = await prisma.user.findUnique({ where: { email } });
-      if (!user || !user.hashedPassword) return null;
+      if (!user) return null;
+
+      if (isFirebase === "true") {
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+          role: user.role,
+        };
+      }
+
+      if (!password || !user.hashedPassword) return null;
 
       const valid = await bcrypt.compare(password, user.hashedPassword);
       if (!valid) return null;

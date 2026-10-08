@@ -1,0 +1,7 @@
+{
+  "name": "SkillLink",
+  "description": "On-demand technical help and verified technician marketplace for Kenya & East Africa with escrow payments.",
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

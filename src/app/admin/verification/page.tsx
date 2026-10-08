@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -27,25 +27,26 @@ export default function AdminVerificationPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
+  const fetchProviders = useCallback(async () => {
+    try {
+      const res = await fetch("/api/admin/verification");
+      if (res.ok) {
+        const data = await res.json();
+        setProviders(data);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (status === "loading") return;
     if (!session || (session.user as any)?.role !== "admin") {
       router.push("/login");
       return;
     }
-    let ignore = false;
-    async function startFetching() {
-      setLoading(true);
-      const res = await fetch("/api/admin/verification");
-      if (res.ok) {
-        const data = await res.json();
-        if (!ignore) setProviders(data);
-      }
-      if (!ignore) setLoading(false);
-    }
-    startFetching();
-    return () => { ignore = true; };
-  }, [session, status, router]);
+    fetchProviders();
+  }, [session, status, router, fetchProviders]);
 
   async function handleAction(id: string, action: "approve" | "reject" | "needs_info") {
     setActionLoading(id);
